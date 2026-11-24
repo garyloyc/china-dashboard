@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { TENORS, billion, loadCnhBook, millionToBillion, type CnhBook, type TenorKey, type YearBucket } from './cnh.ts'
 
+const CMU_SOURCE = 'https://www.cmuomniclear.com/en/securities-search'
+const HKMA_SOURCE = 'https://www.hkma.gov.hk/eng/data-publications-and-research/data-and-statistics/monthly-statistical-bulletin/'
+const CMU_IS_SAVED = !import.meta.env.DEV
+
 const SHANGHAI = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Shanghai',
   day: '2-digit',
@@ -57,24 +61,50 @@ export default function App() {
           <h1>CNH issuance</h1>
         </div>
         <div className="status">
-          <p>
-            {book
-              ? `CMU copy ${book.cmuAsOf ? SHANGHAI.format(new Date(book.cmuAsOf)) : 'saved with the site'} · HKMA live`
-              : 'Pulling CMU and HKMA'}
-          </p>
+          <p>{book ? 'Sources are listed under the title' : 'Pulling CMU and HKMA'}</p>
           <button type="button" onClick={() => void load()} disabled={loading}>
-            {loading ? 'Refreshing' : 'Refresh'}
+            {loading ? 'Reloading' : 'Reload'}
           </button>
         </div>
       </header>
 
-      <p className="note">
-        CMU lists these bonds as CNY. The public file is every public- and private-sector security still lodged with CMU.
-        It has issue date, maturity and outstanding amount, and no separate private-placement marker, so the chart is the
-        full CNY book. Issues that have already matured are absent, which means earlier years only keep the paper that is
-        still outstanding. On the public site the CMU book is the copy saved at publish time. HKMA outstanding is loaded
-        live.
-      </p>
+      <section className="sources" aria-label="Data sources">
+        <article>
+          <div className="source-top">
+            <p>Used for the year chart, tenor table, and the two CMU totals</p>
+            <span className={CMU_IS_SAVED ? 'badge saved' : 'badge live'}>{CMU_IS_SAVED ? 'Saved copy' : 'Live link'}</span>
+          </div>
+          <h2>CMU OmniClear, CNY</h2>
+          <p>
+            Public and private sector securities still lodged with CMU, currency code CNY. Each record has an issue date,
+            a maturity date, an issue size, and an amount still outstanding. The file has no private-placement field, so
+            the charts use the full CNY book. Matured issues drop out.
+          </p>
+          <p className="update">
+            {CMU_IS_SAVED
+              ? `Saved with this site${book?.cmuAsOf ? ` on ${SHANGHAI.format(new Date(book.cmuAsOf))} Shanghai` : ''}. A later month from CMU appears only after the site is published again. Reload reads this saved copy.`
+              : `Read from CMU when this page opens${book?.cmuAsOf ? `, last read ${SHANGHAI.format(new Date(book.cmuAsOf))} Shanghai` : ''}.`}
+          </p>
+          <a href={CMU_SOURCE}>CMU securities search</a>
+        </article>
+        <article>
+          <div className="source-top">
+            <p>Used for the HKMA total, remaining tenor, and the history line</p>
+            <span className="badge live">Live link</span>
+          </div>
+          <h2>HKMA table 5.7.3</h2>
+          <p>
+            Monthly Statistical Bulletin, outstanding amount of renminbi CMU issues by remaining tenor. Figures are RMB million
+            in the source file and shown here in RMB billion.
+          </p>
+          <p className="update">
+            Linked directly to HKMA. Every visit, including Reload, requests the current file. A new month shows up when HKMA
+            publishes it.
+            {latestHkma ? ` Latest month in this view: ${latestHkma.month}.` : ''}
+          </p>
+          <a href={HKMA_SOURCE}>HKMA Monthly Statistical Bulletin</a>
+        </article>
+      </section>
 
       {error && <p className="error">{error}</p>}
 
@@ -102,7 +132,7 @@ export default function App() {
             <p>Original tenor</p>
             <h2>Amount issued, by year</h2>
           </div>
-          <p className="unit">RMB billion · bars are original issue size</p>
+          <p className="unit">{CMU_IS_SAVED ? 'CMU saved copy' : 'CMU live link'} · original issue size, RMB billion</p>
         </div>
         {book ? (
           <YearChart years={book.years} selected={activeYear?.year ?? null} onSelect={setSelectedYear} />
@@ -156,7 +186,9 @@ export default function App() {
               ))}
             </tbody>
           </table>
-          <p className="unit">RMB billion. Tenor is maturity date minus issue date.</p>
+          <p className="unit">
+            {CMU_IS_SAVED ? 'Same saved CMU copy.' : 'Same live CMU file.'} RMB billion. Tenor is maturity date minus issue date.
+          </p>
         </div>
 
         <div className="panel">
@@ -167,7 +199,7 @@ export default function App() {
             </div>
           </div>
           {latestHkma && <TenorBars amounts={latestHkma.byTenor} scale={latestHkma.total} />}
-          <p className="unit">HKMA, RMB billion. The over-7-year bucket is one published series.</p>
+          <p className="unit">HKMA live link, RMB billion. The over-7-year bucket is one published series.</p>
           {history.length > 0 && <OutstandingHistory points={history} />}
         </div>
       </section>

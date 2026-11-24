@@ -77,13 +77,64 @@ button {
 
 button:disabled { opacity: 0.55; cursor: progress; }
 
-.note, .unit, .year-readout, .error, .pending {
+.unit, .year-readout, .error, .pending, .sources p, .update {
   color: var(--muted);
   font-size: 15px;
   line-height: 1.45;
 }
 
-.note { max-width: 78ch; }
+.sources {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.sources article {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 16px;
+}
+
+.sources h2 {
+  font-size: 26px;
+  margin-bottom: 8px;
+}
+
+.sources p { margin: 0 0 8px; }
+
+.source-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.source-top p {
+  margin: 0;
+  color: var(--brass);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.badge {
+  flex: none;
+  border: 1px solid var(--line);
+  padding: 3px 8px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.badge.live { color: #7dba6a; border-color: #7dba6a; }
+.badge.saved { color: var(--brass); border-color: var(--brass); }
+
+.sources a {
+  color: var(--ink);
+  font-size: 14px;
+}
 
 .error { color: var(--down); }
 
@@ -182,7 +233,7 @@ tbody th { text-align: left; font-family: "Source Sans 3", sans-serif; }
 
 @media (max-width: 860px) {
   h1 { font-size: 46px; }
-  .stats, .split, .top { grid-template-columns: 1fr; display: grid; }
+  .stats, .split, .sources, .top { grid-template-columns: 1fr; display: grid; }
   .status, .top { align-items: flex-start; }
   .bars li { grid-template-columns: 1fr; }
 }
