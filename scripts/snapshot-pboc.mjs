@@ -1,14 +1,25 @@
-import { writeFile } from 'node:fs/promises'
+import { access, writeFile } from 'node:fs/promises'
 
 const BASE = 'https://www.pbc.gov.cn'
 const LIST = '/zhengcehuobisi/125207/125213/125431/125475'
 const SOURCE = 'http://www.pbc.gov.cn/zhengcehuobisi/125207/125213/125431/125475/index.html'
 const headers = { 'User-Agent': 'Mozilla/5.0' }
 
+const savedCopy = new URL('../public/pboc-omo.json', import.meta.url)
+
 async function getText(path) {
-  const response = await fetch(`${BASE}${path}`, { headers })
-  if (!response.ok) throw new Error(`${response.status} ${path}`)
-  return response.text()
+  let lastError = new Error(`No response for ${path}`)
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await fetch(`${BASE}${path}`, { headers })
+      if (!response.ok) throw new Error(`${response.status} ${path}`)
+      return await response.text()
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      await new Promise((resolve) => setTimeout(resolve, 400 * attempt))
+    }
+  }
+  throw lastError
 }
 
 function listItems(html) {
@@ -40,6 +51,23 @@ function articleBody(html) {
   return text.slice(start > 0 ? start : 0, (start > 0 ? start : 0) + 900)
 }
 
+async function keepSavedCopy(reason) {
+  try {
+    await access(savedCopy)
+    console.warn(`PBOC refresh failed (${reason}). Keeping the saved copy.`)
+  } catch {
+    throw new Error(reason)
+  }
+}
+
+try {
+await refresh()
+} catch (error) {
+  const reason = error instanceof Error ? error.message : String(error)
+  await keepSavedCopy(reason)
+}
+
+async function refresh() {
 const notices = []
 for (let page = 1; page <= 40; page += 1) {
   const path = page === 1 ? `${LIST}/index.html` : `${LIST}/17081-${page}.html`
@@ -83,5 +111,6 @@ const snapshot = {
   days,
 }
 
-await writeFile(new URL('../public/pboc-omo.json', import.meta.url), JSON.stringify(snapshot))
+await writeFile(savedCopy, JSON.stringify(snapshot))
 console.log(`Saved ${days.length} PBOC injection days`)
+}
