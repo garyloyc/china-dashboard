@@ -147,8 +147,9 @@ export default function App() {
             Maturing repos are not subtracted, so this is gross injection.
           </p>
           <p className="update">
-            Saved with this site{omo?.asOf ? ` on ${SHANGHAI.format(new Date(omo.asOf))} Shanghai` : ''}. A new PBOC day
-            appears after the site is published again. Reload reads this saved copy.
+            Saved with this site{omo?.asOf ? ` on ${SHANGHAI.format(new Date(omo.asOf))} Shanghai` : ''}. GitHub reads
+            the PBOC list once a day around 11:00 Shanghai and publishes a new copy when that read succeeds. If the
+            read does not reach PBOC, this copy stays. Reload reads the saved copy.
           </p>
           <a href={PBOC_SOURCE}>PBOC open-market announcements</a>
         </article>
