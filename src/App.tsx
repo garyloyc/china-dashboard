@@ -11,9 +11,9 @@ type OmoBook = { asOf: string; from?: string; days: OmoDay[] }
 
 const OMO_OPTIONS: { key: OmoTenor; label: string }[] = [
   { key: 'total', label: 'Total' },
-  { key: 'd7', label: '7-day' },
   { key: 'on', label: 'O/N' },
-  { key: 'd14', label: '14-day' },
+  { key: 'd7', label: '7d' },
+  { key: 'd14', label: '14d' },
 ]
 
 function tenorAmount(day: OmoDay, tenor: OmoTenor): number | null {
