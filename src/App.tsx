@@ -5,8 +5,24 @@ const CMU_SOURCE = 'https://www.cmuomniclear.com/en/securities-search'
 const HKMA_SOURCE = 'https://www.hkma.gov.hk/eng/data-publications-and-research/data-and-statistics/monthly-statistical-bulletin/'
 const PBOC_SOURCE = 'http://www.pbc.gov.cn/zhengcehuobisi/125207/125213/125431/125475/index.html'
 
-type OmoDay = { date: string; injection: number }
-type OmoBook = { asOf: string; days: OmoDay[] }
+type OmoTenor = 'total' | 'on' | 'd7' | 'd14'
+type OmoDay = { date: string; on?: number; d7?: number; d14?: number }
+type OmoBook = { asOf: string; from?: string; days: OmoDay[] }
+
+const OMO_OPTIONS: { key: OmoTenor; label: string }[] = [
+  { key: 'total', label: 'Total' },
+  { key: 'd7', label: '7-day' },
+  { key: 'on', label: 'O/N' },
+  { key: 'd14', label: '14-day' },
+]
+
+function tenorAmount(day: OmoDay, tenor: OmoTenor): number | null {
+  if (tenor === 'total') {
+    const values = [day.on, day.d7, day.d14].filter((value): value is number => value != null)
+    return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) : null
+  }
+  return day[tenor] ?? null
+}
 
 async function loadOmo(): Promise<OmoBook> {
   const response = await fetch(`${import.meta.env.BASE_URL}pboc-omo.json`)
@@ -45,6 +61,7 @@ export default function App() {
   const [selectedYear, setSelectedYear] = useState<number | null>(null)
   const [omo, setOmo] = useState<OmoBook | null>(null)
   const [omoError, setOmoError] = useState<string | null>(null)
+  const [omoTenor, setOmoTenor] = useState<OmoTenor>('total')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -119,15 +136,15 @@ export default function App() {
         </article>
         <article>
           <div className="source-top">
-            <p>Used for the 2026 daily injection chart</p>
+            <p>Used for the daily injection chart</p>
             <span className="badge saved">Saved copy</span>
           </div>
           <h2>PBOC open market</h2>
           <p>
-            Open-market business announcements. Each day’s injection is the accepted reverse-repo amount, in 亿元, summed
-            when more than one tenor is conducted. A notice that says the operation amount is zero is plotted as zero.
-            Hong Kong central-bank bill issuance is not counted. Maturing repos are not subtracted, so this is gross
-            injection.
+            Open-market business announcements for the past two years. Each tenor is the accepted reverse-repo amount
+            that day, in 亿元. Total adds overnight, 7-day, and 14-day when more than one is conducted. A notice that
+            says that tenor’s amount is zero is plotted as zero. Hong Kong central-bank bill issuance is not counted.
+            Maturing repos are not subtracted, so this is gross injection.
           </p>
           <p className="update">
             Saved with this site{omo?.asOf ? ` on ${SHANGHAI.format(new Date(omo.asOf))} Shanghai` : ''}. A new PBOC day
@@ -261,18 +278,31 @@ export default function App() {
       <section className="panel">
         <div className="panel-head">
           <div>
-            <p>2026 daily reverse repo</p>
+            <p>Daily reverse repo, past 2 years</p>
             <h2>Liquidity injection</h2>
           </div>
-          <p className="unit">
-            {omo
-              ? `${omo.days.length} days · latest ${omo.days.at(-1)?.date ?? ''} · ${formatYi(omo.days.at(-1)?.injection ?? 0)} 亿元`
-              : 'PBOC saved copy'}
-          </p>
+          <div className="omo-controls">
+            <label>
+              Tenor
+              <select value={omoTenor} onChange={(event) => setOmoTenor(event.target.value as OmoTenor)}>
+                {OMO_OPTIONS.filter((option) => option.key !== 'd14' || omo?.days.some((day) => day.d14 != null)).map(
+                  (option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.label}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+            <p className="unit">{omo ? omoSummary(omo.days, omoTenor) : 'PBOC saved copy'}</p>
+          </div>
         </div>
         {omoError && <p className="error">{omoError}</p>}
-        {omo ? <InjectionChart days={omo.days} /> : <p className="pending">Waiting for the PBOC copy.</p>}
-        <p className="unit">亿元. Gross reverse-repo injection from the saved PBOC announcements. Not net of maturities.</p>
+        {omo ? <InjectionChart days={omo.days} tenor={omoTenor} /> : <p className="pending">Waiting for the PBOC copy.</p>}
+        <p className="unit">
+          亿元. Gross reverse-repo injection from the saved PBOC announcements. Total is overnight plus 7-day plus
+          14-day. Not net of maturities.
+        </p>
       </section>
     </div>
   )
@@ -282,18 +312,30 @@ function formatYi(value: number) {
   return value.toLocaleString('en-US', { maximumFractionDigits: 0 })
 }
 
-function InjectionChart({ days }: { days: OmoDay[] }) {
+function omoSummary(days: OmoDay[], tenor: OmoTenor) {
+  const points = days.flatMap((day) => {
+    const amount = tenorAmount(day, tenor)
+    return amount == null ? [] : [{ date: day.date, amount }]
+  })
+  const latest = points.at(-1)
+  if (!latest) return 'No operations in this tenor'
+  return `${points.length} days · latest ${latest.date} · ${formatYi(latest.amount)} 亿元`
+}
+
+function InjectionChart({ days, tenor }: { days: OmoDay[]; tenor: OmoTenor }) {
   const width = 920
   const height = 250
   const pad = { top: 16, right: 8, bottom: 28, left: 56 }
-  const max = Math.max(...days.map((day) => day.injection), 1)
+  const points = days.map((day) => ({ date: day.date, amount: tenorAmount(day, tenor) }))
+  const max = Math.max(...points.map((day) => day.amount ?? 0), 1)
   const innerW = width - pad.left - pad.right
   const innerH = height - pad.top - pad.bottom
-  const gap = days.length > 1 ? 1 : 0
-  const barW = Math.max((innerW - gap * (days.length - 1)) / days.length, 1)
+  const gap = points.length > 180 ? 0 : 1
+  const barW = points.length > 0 ? Math.max((innerW - gap * (points.length - 1)) / points.length, 0.6) : 1
+  const label = OMO_OPTIONS.find((option) => option.key === tenor)?.label ?? 'Total'
 
   return (
-    <svg className="chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="2026 daily PBOC reverse-repo injection">
+    <svg className="chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${label} PBOC reverse-repo injection`}>
       {[0, 0.5, 1].map((share) => {
         const y = pad.top + innerH - share * innerH
         return (
@@ -305,20 +347,24 @@ function InjectionChart({ days }: { days: OmoDay[] }) {
           </g>
         )
       })}
-      {days.map((day, index) => {
-        const h = (day.injection / max) * innerH
+      {points.map((day, index) => {
+        const amount = day.amount ?? 0
+        const h = day.amount == null ? 0 : (amount / max) * innerH
         const x = pad.left + index * (barW + gap)
         const y = pad.top + innerH - h
         const month = day.date.slice(0, 7)
-        const showLabel = index === 0 || month !== days[index - 1]?.date.slice(0, 7)
+        const showLabel = index === 0 || month !== points[index - 1]?.date.slice(0, 7)
+        const yearStart = day.date.slice(5, 7) === '01' || index === 0
         return (
           <g key={day.date}>
-            <rect x={x} y={y} width={barW} height={Math.max(h, day.injection === 0 ? 1 : 0)} className="omo-bar">
-              <title>{`${day.date}: ${formatYi(day.injection)} 亿元`}</title>
-            </rect>
+            {day.amount != null && (
+              <rect x={x} y={y} width={barW} height={Math.max(h, amount === 0 ? 1 : 0)} className="omo-bar">
+                <title>{`${day.date} ${label}: ${formatYi(amount)} 亿元`}</title>
+              </rect>
+            )}
             {showLabel && (
               <text x={x + barW / 2} y={height - 8} className="tick year-label">
-                {day.date.slice(5, 7)}
+                {yearStart ? `${day.date.slice(2, 4)}/${day.date.slice(5, 7)}` : day.date.slice(5, 7)}
               </text>
             )}
           </g>
