@@ -1,3 +1,15 @@
+export const REMAINING_TENORS = [
+  { key: 'r1', label: '1 year or below', color: '#8d907f' },
+  { key: 'r3', label: 'Over 1y to 3y', color: '#c6a15a' },
+  { key: 'r5', label: 'Over 3y to 5y', color: '#e4d2a4' },
+  { key: 'r7', label: 'Over 5y to 7y', color: '#7dba6a' },
+  { key: 'r10', label: 'Over 7y to 10y', color: '#6a9eae' },
+  { key: 'r15', label: '10y to 15y', color: '#d08a55' },
+  { key: 'r15p', label: 'Over 15y', color: '#e07a62' },
+] as const
+
+export type RemainingKey = (typeof REMAINING_TENORS)[number]['key']
+
 export const TENORS = [
   { key: 'y1', label: '1 year or below', color: '#8d907f' },
   { key: 'y3', label: 'Over 1y to 3y', color: '#c6a15a' },
@@ -39,6 +51,7 @@ export type CnhBook = {
   issued: number
   outstanding: number
   hkma: HkmaMonth[]
+  remaining: { key: RemainingKey; label: string; color: string; count: number; outstanding: number }[]
   loadedAt: number
   cmuAsOf: string
 }
@@ -74,6 +87,16 @@ const emptyTenor = (): Record<TenorKey, number> => ({
   y10: 0,
   y10p: 0,
 })
+
+export function remainingKey(years: number): RemainingKey {
+  if (years <= 1) return 'r1'
+  if (years <= 3) return 'r3'
+  if (years <= 5) return 'r5'
+  if (years <= 7) return 'r7'
+  if (years <= 10) return 'r10'
+  if (years <= 15) return 'r15'
+  return 'r15p'
+}
 
 export function tenorKey(years: number): TenorKey {
   if (years <= 1) return 'y1'
@@ -172,6 +195,11 @@ export async function loadCnhBook(): Promise<CnhBook> {
 
   let issued = 0
   let outstanding = 0
+  const asOfMs = Date.parse(asOf)
+  const asOfTime = Number.isNaN(asOfMs) ? Date.now() : asOfMs
+  const remainingTotals = new Map(
+    REMAINING_TENORS.map((tenor) => [tenor.key, { ...tenor, count: 0, outstanding: 0 }]),
+  )
 
   for (const record of cny) {
     const issueDate = record.cmu_iss_date ?? ''
@@ -206,6 +234,16 @@ export async function loadCnhBook(): Promise<CnhBook> {
         total.outstanding += stillOut
       }
     }
+
+    const maturity = Date.parse(record.cmu_mat_date ?? '')
+    if (!Number.isNaN(maturity)) {
+      const remainingYears = (maturity - asOfTime) / (365.25 * 24 * 60 * 60 * 1000)
+      const remainingBucket = remainingTotals.get(remainingKey(remainingYears))
+      if (remainingBucket) {
+        remainingBucket.count += 1
+        remainingBucket.outstanding += stillOut
+      }
+    }
   }
 
   const hkma = hkmaRecords
@@ -223,6 +261,7 @@ export async function loadCnhBook(): Promise<CnhBook> {
     issueCount: cny.length,
     issued,
     outstanding,
+    remaining: REMAINING_TENORS.map((tenor) => remainingTotals.get(tenor.key)!),
     hkma,
     loadedAt: Date.now(),
     cmuAsOf: asOf,

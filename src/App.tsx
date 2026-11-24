@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { TENORS, billion, loadCnhBook, millionToBillion, type CnhBook, type TenorKey, type YearBucket } from './cnh.ts'
+import { TENORS, billion, loadCnhBook, millionToBillion, type CnhBook, type YearBucket } from './cnh.ts'
 
 const CMU_SOURCE = 'https://www.cmuomniclear.com/en/securities-search'
 const HKMA_SOURCE = 'https://www.hkma.gov.hk/eng/data-publications-and-research/data-and-statistics/monthly-statistical-bulletin/'
@@ -71,7 +71,7 @@ export default function App() {
       <section className="sources" aria-label="Data sources">
         <article>
           <div className="source-top">
-            <p>Used for the year chart, tenor table, and the two CMU totals</p>
+            <p>Used for the year chart, tenor table, CMU totals, and outstanding stock by remaining tenor</p>
             <span className={CMU_IS_SAVED ? 'badge saved' : 'badge live'}>{CMU_IS_SAVED ? 'Saved copy' : 'Live link'}</span>
           </div>
           <h2>CMU OmniClear, CNY</h2>
@@ -89,7 +89,7 @@ export default function App() {
         </article>
         <article>
           <div className="source-top">
-            <p>Used for the HKMA total, remaining tenor, and the history line</p>
+            <p>Used for the HKMA total and the history line</p>
             <span className="badge live">Live link</span>
           </div>
           <h2>HKMA table 5.7.3</h2>
@@ -194,12 +194,35 @@ export default function App() {
         <div className="panel">
           <div className="panel-head">
             <div>
-              <p>{latestHkma ? `Remaining tenor at ${latestHkma.month}` : 'Remaining tenor'}</p>
+              <p>Remaining tenor of the CMU book</p>
               <h2>Outstanding stock</h2>
             </div>
           </div>
-          {latestHkma && <TenorBars amounts={latestHkma.byTenor} scale={latestHkma.total} />}
-          <p className="unit">HKMA live link, RMB billion. The over-7-year bucket is one published series.</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Tenor</th>
+                <th>Issues</th>
+                <th>Outstanding</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(book?.remaining ?? []).map((tenor) => (
+                <tr key={tenor.key}>
+                  <th scope="row">
+                    <i style={{ background: tenor.color }} />
+                    {tenor.label}
+                  </th>
+                  <td>{tenor.count.toLocaleString('en-US')}</td>
+                  <td>{billion(tenor.outstanding)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="unit">
+            {CMU_IS_SAVED ? 'Saved CMU copy.' : 'Live CMU file.'} RMB billion. Remaining tenor is maturity date minus the
+            copy date. HKMA publishes over 7 years as one series, so 7–10, 10–15, and over 15 are calculated from CMU.
+          </p>
           {history.length > 0 && <OutstandingHistory points={history} />}
         </div>
       </section>
@@ -262,26 +285,6 @@ function YearChart({
         )
       })}
     </svg>
-  )
-}
-
-function TenorBars({ amounts, scale }: { amounts: Record<TenorKey, number>; scale: number }) {
-  return (
-    <ul className="bars">
-      {TENORS.filter((tenor) => tenor.key !== 'y10p').map((tenor) => {
-        const value = amounts[tenor.key]
-        const width = scale > 0 ? (value / scale) * 100 : 0
-        return (
-          <li key={tenor.key}>
-            <span>{tenor.key === 'y10' ? 'Over 7 years' : tenor.label}</span>
-            <span className="track">
-              <i style={{ width: `${width}%`, background: tenor.color }} />
-            </span>
-            <strong>{millionToBillion(value)}</strong>
-          </li>
-        )
-      })}
-    </ul>
   )
 }
 
