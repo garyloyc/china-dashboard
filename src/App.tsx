@@ -3,6 +3,17 @@ import { TENORS, billion, loadCnhBook, millionToBillion, type CnhBook, type Year
 
 const CMU_SOURCE = 'https://www.cmuomniclear.com/en/securities-search'
 const HKMA_SOURCE = 'https://www.hkma.gov.hk/eng/data-publications-and-research/data-and-statistics/monthly-statistical-bulletin/'
+const PBOC_SOURCE = 'http://www.pbc.gov.cn/zhengcehuobisi/125207/125213/125431/125475/index.html'
+
+type OmoDay = { date: string; injection: number }
+type OmoBook = { asOf: string; days: OmoDay[] }
+
+async function loadOmo(): Promise<OmoBook> {
+  const response = await fetch(`${import.meta.env.BASE_URL}pboc-omo.json`)
+  if (!response.ok) throw new Error(`PBOC file ${response.status}`)
+  const payload = (await response.json()) as OmoBook
+  return { asOf: payload.asOf ?? '', days: payload.days ?? [] }
+}
 const CMU_IS_SAVED = !import.meta.env.DEV
 
 const SHANGHAI = new Intl.DateTimeFormat('en-GB', {
@@ -32,17 +43,19 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedYear, setSelectedYear] = useState<number | null>(null)
+  const [omo, setOmo] = useState<OmoBook | null>(null)
+  const [omoError, setOmoError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    try {
-      setBook(await loadCnhBook())
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'The CMU feed did not load.')
-    } finally {
-      setLoading(false)
-    }
+    setOmoError(null)
+    const [bookResult, omoResult] = await Promise.allSettled([loadCnhBook(), loadOmo()])
+    if (bookResult.status === 'fulfilled') setBook(bookResult.value)
+    else setError(bookResult.reason instanceof Error ? bookResult.reason.message : 'The CMU feed did not load.')
+    if (omoResult.status === 'fulfilled') setOmo(omoResult.value)
+    else setOmoError(omoResult.reason instanceof Error ? omoResult.reason.message : 'The PBOC file did not load.')
+    setLoading(false)
   }, [])
 
   useEffect(() => {
@@ -103,6 +116,24 @@ export default function App() {
             {latestHkma ? ` Latest month in this view: ${latestHkma.month}.` : ''}
           </p>
           <a href={HKMA_SOURCE}>HKMA Monthly Statistical Bulletin</a>
+        </article>
+        <article>
+          <div className="source-top">
+            <p>Used for the 2026 daily injection chart</p>
+            <span className="badge saved">Saved copy</span>
+          </div>
+          <h2>PBOC open market</h2>
+          <p>
+            Open-market business announcements. Each day’s injection is the accepted reverse-repo amount, in 亿元, summed
+            when more than one tenor is conducted. A notice that says the operation amount is zero is plotted as zero.
+            Hong Kong central-bank bill issuance is not counted. Maturing repos are not subtracted, so this is gross
+            injection.
+          </p>
+          <p className="update">
+            Saved with this site{omo?.asOf ? ` on ${SHANGHAI.format(new Date(omo.asOf))} Shanghai` : ''}. A new PBOC day
+            appears after the site is published again. Reload reads this saved copy.
+          </p>
+          <a href={PBOC_SOURCE}>PBOC open-market announcements</a>
         </article>
       </section>
 
@@ -226,7 +257,74 @@ export default function App() {
           {history.length > 0 && <OutstandingHistory points={history} />}
         </div>
       </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <p>2026 daily reverse repo</p>
+            <h2>Liquidity injection</h2>
+          </div>
+          <p className="unit">
+            {omo
+              ? `${omo.days.length} days · latest ${omo.days.at(-1)?.date ?? ''} · ${formatYi(omo.days.at(-1)?.injection ?? 0)} 亿元`
+              : 'PBOC saved copy'}
+          </p>
+        </div>
+        {omoError && <p className="error">{omoError}</p>}
+        {omo ? <InjectionChart days={omo.days} /> : <p className="pending">Waiting for the PBOC copy.</p>}
+        <p className="unit">亿元. Gross reverse-repo injection from the saved PBOC announcements. Not net of maturities.</p>
+      </section>
     </div>
+  )
+}
+
+function formatYi(value: number) {
+  return value.toLocaleString('en-US', { maximumFractionDigits: 0 })
+}
+
+function InjectionChart({ days }: { days: OmoDay[] }) {
+  const width = 920
+  const height = 250
+  const pad = { top: 16, right: 8, bottom: 28, left: 56 }
+  const max = Math.max(...days.map((day) => day.injection), 1)
+  const innerW = width - pad.left - pad.right
+  const innerH = height - pad.top - pad.bottom
+  const gap = days.length > 1 ? 1 : 0
+  const barW = Math.max((innerW - gap * (days.length - 1)) / days.length, 1)
+
+  return (
+    <svg className="chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="2026 daily PBOC reverse-repo injection">
+      {[0, 0.5, 1].map((share) => {
+        const y = pad.top + innerH - share * innerH
+        return (
+          <g key={share}>
+            <line x1={pad.left} x2={width - pad.right} y1={y} y2={y} className="grid" />
+            <text x={pad.left - 8} y={y + 4} className="tick" textAnchor="end">
+              {formatYi(max * share)}
+            </text>
+          </g>
+        )
+      })}
+      {days.map((day, index) => {
+        const h = (day.injection / max) * innerH
+        const x = pad.left + index * (barW + gap)
+        const y = pad.top + innerH - h
+        const month = day.date.slice(0, 7)
+        const showLabel = index === 0 || month !== days[index - 1]?.date.slice(0, 7)
+        return (
+          <g key={day.date}>
+            <rect x={x} y={y} width={barW} height={Math.max(h, day.injection === 0 ? 1 : 0)} className="omo-bar">
+              <title>{`${day.date}: ${formatYi(day.injection)} 亿元`}</title>
+            </rect>
+            {showLabel && (
+              <text x={x + barW / 2} y={height - 8} className="tick year-label">
+                {day.date.slice(5, 7)}
+              </text>
+            )}
+          </g>
+        )
+      })}
+    </svg>
   )
 }
 

@@ -90,6 +90,8 @@ button:disabled { opacity: 0.55; cursor: progress; }
   margin-top: 18px;
 }
 
+.sources article:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
 .sources article {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -176,6 +178,7 @@ button:disabled { opacity: 0.55; cursor: progress; }
 .tick { fill: var(--muted); font-size: 11px; font-family: "IBM Plex Mono", ui-monospace, monospace; }
 .year-label { text-anchor: middle; }
 .bar-hit { cursor: pointer; }
+.omo-bar { fill: var(--brass); }
 .selected { fill: transparent; stroke: var(--ink); stroke-width: 1; }
 
 .legend, .bars {
